@@ -873,49 +873,157 @@ function AddEmployeeModal({ onClose, onSave }) {
 /* ------------------------------------------------------------------ */
 
 function DailyPluckingPage() {
-  const totalKg = DAILY_PLUCKING.reduce((s, f) => s + f.leafField, 0);
-  const totalMandays = DAILY_ATTENDANCE_TEAM.filter(a => a.job === "0").length;
+  const [division, setDivision] = useState("A1");
+  const [date, setDate] = useState("2026-08-20");
+  const [team, setTeam] = useState("A");
+  const [fieldRows, setFieldRows] = useState(DAILY_PLUCKING);
+  const [teamRows, setTeamRows] = useState(DAILY_ATTENDANCE_TEAM);
+  const [saved, setSaved] = useState(true);
+
+  const setFieldCell = (field, key, value) => {
+    setSaved(false);
+    setFieldRows((rows) => rows.map((r) => {
+      if (r.field !== field) return r;
+      const next = { ...r, [key]: value };
+      const leafField = parseFloat(next.leafField) || 0;
+      const leafFactory = parseFloat(next.leafFactory) || 0;
+      const pluckers = parseFloat(next.pluckers) || 0;
+      const haDone = parseFloat(next.haDone) || 0;
+      next.diff = leafField - leafFactory;
+      next.leafAvg = pluckers > 0 ? +(leafField / pluckers).toFixed(2) : 0;
+      next.labourPerHa = haDone > 0 ? +(pluckers / haDone).toFixed(2) : 0;
+      return next;
+    }));
+  };
+  const setTeamCell = (code, key, value) => {
+    setSaved(false);
+    setTeamRows((rows) => rows.map((r) => (r.code === code ? { ...r, [key]: value } : r)));
+  };
+  const addFieldRow = () => {
+    setSaved(false);
+    setFieldRows((rows) => [...rows, { field: "", team, roundDays: 0, leafField: 0, leafFactory: 0, diff: 0, pluckers: 0, leafAvg: 0, haDone: 0, labourPerHa: 0, bags: 0 }]);
+  };
+  const addTeamRow = () => {
+    setSaved(false);
+    setTeamRows((rows) => [...rows, { code: "", name: "", hand: 0, shear: 0, job: "0", halfDay: "F" }]);
+  };
+
+  const totalKg = fieldRows.reduce((s, f) => s + (parseFloat(f.leafField) || 0), 0);
+  const totalMandays = teamRows.filter((a) => a.job === "0").length;
+  const totalDiff = fieldRows.reduce((s, f) => s + (parseFloat(f.diff) || 0), 0);
+
+  const cellInput = (value, onChange, width = 70) => (
+    <input
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      style={{ ...inputStyle, width, padding: "5px 8px", textAlign: "right", fontFamily: "'IBM Plex Mono', monospace" }}
+    />
+  );
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <SectionCard eyebrow="Transactions \u00b7 Glendale Division" title="Daily plucking & attendance"
-        right={<div style={{ display: "flex", gap: 20, fontSize: 12.5, color: "#5B5240" }}>
-          <span><strong>Date</strong> 20 Aug 2026</span><span><strong>Team</strong> A</span>
-        </div>}>
+      <SectionCard
+        eyebrow="Transactions" title="Daily plucking & attendance"
+        right={
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <select style={{ ...inputStyle, width: 190 }} value={division} onChange={(e) => setDivision(e.target.value)}>
+              {DIVISIONS.filter((d) => d.type === "Field Division").map((d) => <option key={d.code} value={d.code}>{d.name}</option>)}
+            </select>
+            <input type="date" style={{ ...inputStyle, width: 150 }} value={date} onChange={(e) => setDate(e.target.value)} />
+            <select style={{ ...inputStyle, width: 90 }} value={team} onChange={(e) => setTeam(e.target.value)}>
+              {["A", "B", "C"].map((t) => <option key={t} value={t}>Team {t}</option>)}
+            </select>
+          </div>
+        }
+      >
         <div style={{ display: "flex", gap: 16, marginBottom: 18, flexWrap: "wrap" }}>
-          <KpiCard label="Green Leaf Collected" value={totalKg.toLocaleString("en-IN") + " kg"} sub="3 fields harvested today" icon={Leaf} accent="#4C7A5E" />
-          <KpiCard label="Plucking Mandays" value={totalMandays} sub="Team A, shear plucking" icon={Users} accent="#2F4A3C" />
-          <KpiCard label="Field Variance" value={DAILY_PLUCKING.reduce((s,f)=>s+f.diff,0) + " kg"} sub="Field vs. factory weight" icon={ShieldCheck} accent="#7C2D28" />
+          <KpiCard label="Green Leaf Collected" value={totalKg.toLocaleString("en-IN") + " kg"} sub={`${fieldRows.length} fields harvested`} icon={Leaf} accent="#4C7A5E" />
+          <KpiCard label="Plucking Mandays" value={totalMandays} sub={`Team ${team}, shear plucking`} icon={Users} accent="#2F4A3C" />
+          <KpiCard label="Field Variance" value={totalDiff + " kg"} sub="Field vs. factory weight" icon={ShieldCheck} accent="#7C2D28" />
         </div>
-        <div style={{ fontSize: 12, fontWeight: 700, color: "#7C7259", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 8 }}>Field-wise collection</div>
-        <Table
-          columns={[
-            { key: "field", label: "Field" },
-            { key: "roundDays", label: "Round Days", align: "right" },
-            { key: "leafField", label: "Leaf \u2013 Field (kg)", align: "right", mono: true },
-            { key: "leafFactory", label: "Leaf \u2013 Factory (kg)", align: "right", mono: true },
-            { key: "diff", label: "Diff", align: "right", mono: true, render: (r) => <span style={{ color: r.diff < 0 ? "#8A2E24" : "#33613F", fontWeight: 700 }}>{r.diff}</span> },
-            { key: "pluckers", label: "Pluckers", align: "right" },
-            { key: "leafAvg", label: "Leaf Avg", align: "right", mono: true },
-            { key: "haDone", label: "Ha Done", align: "right" },
-            { key: "labourPerHa", label: "Labour / Ha", align: "right", mono: true },
-          ]}
-          rows={DAILY_PLUCKING}
-          keyField="field"
-        />
+
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#7C7259", textTransform: "uppercase", letterSpacing: 0.6 }}>Field-wise collection</div>
+          <Btn variant="ghost" icon={PlusCircle} onClick={addFieldRow}>Add Field Row</Btn>
+        </div>
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
+            <thead>
+              <tr>
+                {["Field", "Round Days", "Leaf \u2013 Field (kg)", "Leaf \u2013 Factory (kg)", "Diff", "Pluckers", "Leaf Avg", "Ha Done", "Labour / Ha"].map((h) => (
+                  <th key={h} style={{ textAlign: h === "Field" ? "left" : "right", padding: "9px 10px", fontSize: 11, fontWeight: 700, color: "#7C7259", textTransform: "uppercase", borderBottom: "2px solid #E6DFCB", whiteSpace: "nowrap" }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {fieldRows.map((r, i) => (
+                <tr key={i} style={{ background: i % 2 === 0 ? "#FFFFFF" : "#FBF9F1" }}>
+                  <td style={{ padding: "6px 10px", borderBottom: "1px solid #F0EBDA" }}>
+                    <input value={r.field} onChange={(e) => setFieldCell(r.field, "field", e.target.value)} style={{ ...inputStyle, width: 60, padding: "5px 8px", fontFamily: "'IBM Plex Mono', monospace" }} />
+                  </td>
+                  <td style={{ padding: "6px 10px", borderBottom: "1px solid #F0EBDA", textAlign: "right" }}>{cellInput(r.roundDays, (v) => setFieldCell(r.field, "roundDays", v))}</td>
+                  <td style={{ padding: "6px 10px", borderBottom: "1px solid #F0EBDA", textAlign: "right" }}>{cellInput(r.leafField, (v) => setFieldCell(r.field, "leafField", v))}</td>
+                  <td style={{ padding: "6px 10px", borderBottom: "1px solid #F0EBDA", textAlign: "right" }}>{cellInput(r.leafFactory, (v) => setFieldCell(r.field, "leafFactory", v))}</td>
+                  <td style={{ padding: "6px 10px", borderBottom: "1px solid #F0EBDA", textAlign: "right", fontFamily: "'IBM Plex Mono', monospace", fontWeight: 700, color: r.diff < 0 ? "#8A2E24" : "#33613F" }}>{r.diff}</td>
+                  <td style={{ padding: "6px 10px", borderBottom: "1px solid #F0EBDA", textAlign: "right" }}>{cellInput(r.pluckers, (v) => setFieldCell(r.field, "pluckers", v), 60)}</td>
+                  <td style={{ padding: "6px 10px", borderBottom: "1px solid #F0EBDA", textAlign: "right", fontFamily: "'IBM Plex Mono', monospace", color: "#6B6350" }}>{r.leafAvg}</td>
+                  <td style={{ padding: "6px 10px", borderBottom: "1px solid #F0EBDA", textAlign: "right" }}>{cellInput(r.haDone, (v) => setFieldCell(r.field, "haDone", v), 55)}</td>
+                  <td style={{ padding: "6px 10px", borderBottom: "1px solid #F0EBDA", textAlign: "right", fontFamily: "'IBM Plex Mono', monospace", color: "#6B6350" }}>{r.labourPerHa}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div style={{ fontSize: 11.5, color: "#9C8F6E", marginTop: 8 }}>Leaf Avg and Labour / Ha recalculate automatically as you edit.</div>
       </SectionCard>
 
-      <SectionCard eyebrow="Team A" title="Employee-wise plucking entry">
-        <Table
-          columns={[
-            { key: "code", label: "Code", mono: true },
-            { key: "name", label: "Employee" },
-            { key: "hand", label: "Hand Plucking (kg)", align: "right", mono: true },
-            { key: "shear", label: "Shear Plucking (kg)", align: "right", mono: true },
-            { key: "job", label: "Sundry Job", render: (r) => r.job === "ABS" ? <Pill tone="bad">Absent</Pill> : r.job === "0" ? <Pill tone="good">Plucking</Pill> : <Pill>{r.job}</Pill> },
-            { key: "halfDay", label: "Half Day" },
-          ]}
-          rows={DAILY_ATTENDANCE_TEAM}
-        />
+      <SectionCard
+        eyebrow={`Team ${team}`} title="Employee-wise plucking entry"
+        right={<Btn variant="ghost" icon={PlusCircle} onClick={addTeamRow}>Add Employee</Btn>}
+      >
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
+            <thead>
+              <tr>
+                {["Code", "Employee", "Hand Plucking (kg)", "Shear Plucking (kg)", "Sundry Job", "Half Day"].map((h) => (
+                  <th key={h} style={{ textAlign: h === "Code" || h === "Employee" ? "left" : "right", padding: "9px 10px", fontSize: 11, fontWeight: 700, color: "#7C7259", textTransform: "uppercase", borderBottom: "2px solid #E6DFCB", whiteSpace: "nowrap" }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {teamRows.map((r, i) => (
+                <tr key={i} style={{ background: i % 2 === 0 ? "#FFFFFF" : "#FBF9F1" }}>
+                  <td style={{ padding: "6px 10px", borderBottom: "1px solid #F0EBDA", fontFamily: "'IBM Plex Mono', monospace" }}>
+                    <input value={r.code} onChange={(e) => setTeamCell(r.code || `new-${i}`, "code", e.target.value)} style={{ ...inputStyle, width: 70, padding: "5px 8px", fontFamily: "'IBM Plex Mono', monospace" }} />
+                  </td>
+                  <td style={{ padding: "6px 10px", borderBottom: "1px solid #F0EBDA" }}>
+                    <input value={r.name} onChange={(e) => setTeamCell(r.code, "name", e.target.value)} style={{ ...inputStyle, width: 150, padding: "5px 8px" }} />
+                  </td>
+                  <td style={{ padding: "6px 10px", borderBottom: "1px solid #F0EBDA", textAlign: "right" }}>{cellInput(r.hand, (v) => setTeamCell(r.code, "hand", v))}</td>
+                  <td style={{ padding: "6px 10px", borderBottom: "1px solid #F0EBDA", textAlign: "right" }}>{cellInput(r.shear, (v) => setTeamCell(r.code, "shear", v))}</td>
+                  <td style={{ padding: "6px 10px", borderBottom: "1px solid #F0EBDA", textAlign: "right" }}>
+                    <select value={r.job} onChange={(e) => setTeamCell(r.code, "job", e.target.value)} style={{ ...inputStyle, width: 90, padding: "5px 8px" }}>
+                      <option value="0">Plucking</option>
+                      <option value="ABS">Absent</option>
+                      <option value="FOH">FOH</option>
+                      <option value="RPC6">RPC6</option>
+                    </select>
+                  </td>
+                  <td style={{ padding: "6px 10px", borderBottom: "1px solid #F0EBDA", textAlign: "right" }}>
+                    <select value={r.halfDay} onChange={(e) => setTeamCell(r.code, "halfDay", e.target.value)} style={{ ...inputStyle, width: 60, padding: "5px 8px" }}>
+                      <option value="F">F</option>
+                      <option value="H">H</option>
+                    </select>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 14, marginTop: 16, paddingTop: 14, borderTop: "1px solid #EEE8D6" }}>
+          {saved && <span style={{ fontSize: 12, color: "#33613F" }}>All changes saved</span>}
+          <Btn onClick={() => setSaved(true)}>Save Entries</Btn>
+        </div>
       </SectionCard>
     </div>
   );
@@ -926,27 +1034,77 @@ function DailyPluckingPage() {
 /* ------------------------------------------------------------------ */
 
 function MonthlyAttendancePage() {
+  const [division, setDivision] = useState("A1");
+  const [month, setMonth] = useState("August");
+  const [year, setYear] = useState("2026");
+  const [category, setCategory] = useState("Category C");
+  const [rows, setRows] = useState(MONTHLY_ATTENDANCE);
+  const [saved, setSaved] = useState(true);
+
+  const setCell = (code, key, value) => {
+    setSaved(false);
+    setRows((rs) => rs.map((r) => (r.code === code ? { ...r, [key]: value } : r)));
+  };
+
+  const dayCols = [
+    ["worked", "Worked Days"], ["lop", "LOP"], ["cl", "CL"], ["holi", "Holiday"],
+    ["pl", "PL"], ["sick", "Sick"], ["ot", "OT Hrs"], ["incentive", "Incentive Days"],
+  ];
+
   return (
     <SectionCard
-      eyebrow="Transactions \u00b7 August 2026 \u00b7 All Divisions"
-      title="Monthly paid attendance"
-      right={<Pill tone="gold">Category C</Pill>}
+      eyebrow="Transactions" title="Monthly paid attendance"
+      right={
+        <div style={{ display: "flex", gap: 10 }}>
+          <select style={{ ...inputStyle, width: 90 }} value={year} onChange={(e) => setYear(e.target.value)}>
+            {["2024", "2025", "2026"].map((y) => <option key={y}>{y}</option>)}
+          </select>
+          <select style={{ ...inputStyle, width: 130 }} value={month} onChange={(e) => setMonth(e.target.value)}>
+            {["June", "July", "August", "September"].map((m) => <option key={m}>{m}</option>)}
+          </select>
+          <select style={{ ...inputStyle, width: 190 }} value={division} onChange={(e) => setDivision(e.target.value)}>
+            {DIVISIONS.map((d) => <option key={d.code} value={d.code}>{d.name}</option>)}
+          </select>
+          <select style={{ ...inputStyle, width: 150 }} value={category} onChange={(e) => setCategory(e.target.value)}>
+            {CATEGORIES.map((c) => <option key={c.name}>{c.name}</option>)}
+          </select>
+        </div>
+      }
     >
-      <Table
-        columns={[
-          { key: "code", label: "Code", mono: true },
-          { key: "name", label: "Employee" },
-          { key: "worked", label: "Worked Days", align: "right", mono: true },
-          { key: "lop", label: "LOP", align: "right", mono: true },
-          { key: "cl", label: "CL", align: "right", mono: true },
-          { key: "holi", label: "Holiday", align: "right", mono: true },
-          { key: "pl", label: "PL", align: "right", mono: true },
-          { key: "sick", label: "Sick", align: "right", mono: true },
-          { key: "ot", label: "OT Hrs", align: "right", mono: true },
-          { key: "incentive", label: "Incentive Days", align: "right", mono: true },
-        ]}
-        rows={MONTHLY_ATTENDANCE}
-      />
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left", padding: "9px 10px", fontSize: 11, fontWeight: 700, color: "#7C7259", textTransform: "uppercase", borderBottom: "2px solid #E6DFCB" }}>Code</th>
+              <th style={{ textAlign: "left", padding: "9px 10px", fontSize: 11, fontWeight: 700, color: "#7C7259", textTransform: "uppercase", borderBottom: "2px solid #E6DFCB" }}>Employee</th>
+              {dayCols.map(([, label]) => (
+                <th key={label} style={{ textAlign: "right", padding: "9px 10px", fontSize: 11, fontWeight: 700, color: "#7C7259", textTransform: "uppercase", borderBottom: "2px solid #E6DFCB", whiteSpace: "nowrap" }}>{label}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={r.code} style={{ background: i % 2 === 0 ? "#FFFFFF" : "#FBF9F1" }}>
+                <td style={{ padding: "8px 10px", borderBottom: "1px solid #F0EBDA", fontFamily: "'IBM Plex Mono', monospace" }}>{r.code}</td>
+                <td style={{ padding: "8px 10px", borderBottom: "1px solid #F0EBDA" }}>{r.name}</td>
+                {dayCols.map(([key]) => (
+                  <td key={key} style={{ padding: "6px 10px", borderBottom: "1px solid #F0EBDA", textAlign: "right" }}>
+                    <input
+                      value={r[key]}
+                      onChange={(e) => setCell(r.code, key, e.target.value)}
+                      style={{ ...inputStyle, width: 60, padding: "5px 8px", textAlign: "right", fontFamily: "'IBM Plex Mono', monospace" }}
+                    />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 14, marginTop: 16, paddingTop: 14, borderTop: "1px solid #EEE8D6" }}>
+        {saved && <span style={{ fontSize: 12, color: "#33613F" }}>All changes saved</span>}
+        <Btn onClick={() => setSaved(true)}>Save Attendance</Btn>
+      </div>
     </SectionCard>
   );
 }
