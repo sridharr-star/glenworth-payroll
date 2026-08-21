@@ -14,7 +14,13 @@ The layout is intentionally different from Agiler's old Windows-menu-bar style: 
 left sidebar with grouped navigation, card-based screens, search + click-to-expand
 employee profiles, a dashboard with KPIs and a chart, and a payslip generator.
 
-## Getting started
+## Live demo
+
+Once pushed to GitHub with Pages enabled (see below), the app is served at:
+
+**https://sridharr-star.github.io/glenworth-payroll/**
+
+## Getting started (local)
 
 ```bash
 npm install
@@ -23,12 +29,27 @@ npm run dev
 
 Then open the printed local URL (typically `http://localhost:5173`).
 
+This is a Vite/React project — `index.html` cannot be opened directly as a file
+(`file://…`) or viewed as source on github.com; it must be run through the Vite
+dev server (above) or built and served (below).
+
 ## Build
 
 ```bash
 npm run build
 npm run preview
 ```
+
+## Deploying to GitHub Pages
+
+A workflow at `.github/workflows/deploy.yml` builds and deploys the app
+automatically on every push to `main`. One-time setup after pushing:
+
+1. On GitHub, go to the repo's **Settings → Pages**.
+2. Under **Build and deployment → Source**, choose **GitHub Actions**.
+3. Push to `main` (or re-run the workflow from the **Actions** tab).
+4. After the workflow finishes, the app is live at
+   `https://sridharr-star.github.io/glenworth-payroll/`.
 
 ## Project structure
 
