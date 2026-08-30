@@ -1778,6 +1778,7 @@ export default function GlenworthPayrollApp() {
       case "deductions": return <DeductionsPage />;
       case "employee": return <EmployeePage />;
       case "plucking": return <DailyPluckingPage />;
+      case "weighingupload": return <DailyWeighingUpload />;
       case "attendance": return <MonthlyAttendancePage />;
       case "varearn": return <VariableEntryPage mode="earnings" />;
       case "vardeduct": return <VariableEntryPage mode="deductions" />;
