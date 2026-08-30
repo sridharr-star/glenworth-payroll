@@ -1683,7 +1683,7 @@ const PAGE_TITLES = {
   dashboard: "Dashboard", company: "Company", division: "Division / Cost Centre",
   field: "Field", category: "Category", designation: "Designation", gradelevel: "Grade & Level",
   jobcode: "Job Code", earnings: "Earnings", deductions: "Deductions", employee: "Employee",
-  plucking: "Daily Plucking", attendance: "Monthly Attendance", varearn: "Variable Earnings",
+  plucking: "Daily Plucking", weighingupload: "Daily Weighing Upload", attendance: "Monthly Attendance", varearn: "Variable Earnings",
   vardeduct: "Variable Deductions", payslip: "Payslip",
 };
 
