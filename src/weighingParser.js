@@ -20,8 +20,16 @@
 //
 // NOTE: the Field-vs-Factory interpretation of the two weight columns is an
 // assumption pending confirmation from field staff — see chat notes.
-// If it turns out to be "round 1 / round 2" of the same weighing point
-// instead, only the labels here need to change, not the parsing logic.
+
+/**
+ * Strip null bytes and other non-printable control characters that some
+ * export tools leave behind (Postgres text columns reject \u0000 outright).
+ */
+function sanitize(str) {
+  if (str == null) return str;
+  // eslint-disable-next-line no-control-regex
+  return String(str).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "").trim();
+}
 
 /**
  * Extract the terminal code (I1, I2, I3, ...) from a filename like
@@ -51,9 +59,13 @@ function parseDdmmyy(raw) {
  * @returns {Array<object>} parsed records ready to upsert into `daily_weighing`
  */
 export function parseWeighingFile(text, terminal) {
-  const lines = text
+  // Strip null bytes from the whole file up front (covers stray bytes
+  // that don't land inside a clean field, e.g. trailing padding at EOF).
+  const cleanText = sanitize(text.replace(/\u0000/g, ""));
+
+  const lines = cleanText
     .split(/\r?\n/)
-    .map((l) => l.trim())
+    .map((l) => sanitize(l))
     .filter((l) => l.length > 0);
 
   const records = [];
@@ -68,15 +80,15 @@ export function parseWeighingFile(text, terminal) {
     }
 
     try {
-      const employeeCode = parts[3].trim();
-      const workDate = parseDdmmyy(parts[2].trim());
-      const fieldCode1 = parts[6].trim();
+      const employeeCode = sanitize(parts[3]);
+      const workDate = parseDdmmyy(sanitize(parts[2]));
+      const fieldCode1 = sanitize(parts[6]);
       const fieldKg = parseInt(parts[9], 10) || 0;
-      const fieldCode2 = parts[12].trim();
+      const fieldCode2 = sanitize(parts[12]);
       const factoryKg = parseInt(parts[15], 10) || 0;
-      const scaleId = parts[28] ? parts[28].trim() : null;
-      const status1 = parts[30] ? parts[30].trim() : "";
-      const status2 = parts[31] ? parts[31].trim() : "";
+      const scaleId = parts[28] ? sanitize(parts[28]) : null;
+      const status1 = parts[30] ? sanitize(parts[30]) : "";
+      const status2 = parts[31] ? sanitize(parts[31]) : "";
 
       if (!employeeCode) {
         errors.push({ line: idx + 1, reason: "Missing employee code", raw: line });
@@ -86,13 +98,13 @@ export function parseWeighingFile(text, terminal) {
       records.push({
         employee_code: employeeCode,
         field_code: fieldCode1 || fieldCode2 || "UNKNOWN",
-        terminal,
+        terminal: sanitize(terminal),
         work_date: workDate,
         field_kg: fieldKg,
         factory_kg: factoryKg,
         scale_id: scaleId,
         status_flags: [status1, status2].filter(Boolean).join(","),
-        raw_line: line,
+        raw_line: sanitize(line),
       });
     } catch (err) {
       errors.push({ line: idx + 1, reason: err.message, raw: line });
