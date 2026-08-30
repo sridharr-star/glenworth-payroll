@@ -1670,6 +1670,7 @@ const NAV = [
     group: "Transactions",
     items: [
       { key: "plucking", label: "Daily Plucking", icon: ClipboardList },
+      { key: "weighingupload", label: "Daily Weighing Upload", icon: ClipboardList },
       { key: "attendance", label: "Monthly Attendance", icon: CalendarDays },
       { key: "varearn", label: "Variable Earnings", icon: PlusCircle },
       { key: "vardeduct", label: "Variable Deductions", icon: MinusSquare },
