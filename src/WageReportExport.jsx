@@ -58,9 +58,17 @@ export default function WageReportExport() {
       const { data, error } = await supabase
         .from("monthly_pms_settlement")
         .select("month")
+        .not("month", "is", null)
         .order("month", { ascending: false });
       if (!error && data) {
-        const unique = [...new Set(data.map((r) => r.month))];
+        // Filter out null/undefined defensively even though the query above
+        // already excludes them — a null `month` happens when a
+        // daily_weighing row has a null file_date (e.g. a file whose name
+        // didn't match the expected YYYYMMDD.A<n>.TXT pattern), and without
+        // this guard a single bad row crashes the whole page (and, with no
+        // error boundary anywhere in the app, the whole app) via .slice()
+        // on null in the dropdown below.
+        const unique = [...new Set(data.map((r) => r.month).filter(Boolean))];
         setMonths(unique);
       }
     }
@@ -158,7 +166,7 @@ export default function WageReportExport() {
           style={{ padding: "0.5rem", borderRadius: 6, border: "1px solid #ccc", minWidth: 220 }}
         >
           <option value="">All months</option>
-          {months.map((m) => (
+          {months.filter(Boolean).map((m) => (
             <option key={m} value={m.slice(0, 7)}>
               {new Date(m).toLocaleDateString("en-GB", { month: "long", year: "numeric" })}
             </option>
