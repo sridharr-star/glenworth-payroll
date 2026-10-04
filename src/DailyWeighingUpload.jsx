@@ -26,7 +26,7 @@ export default function DailyWeighingUpload() {
     for (const file of files) {
       const text = await file.text();
       const terminal = extractTerminalFromFilename(file.name);
-      const { records, errors: fileErrors } = parseWeighingFile(text, terminal);
+      const { records, errors: fileErrors } = parseWeighingFile(text, terminal, file.name);
       allRecords.push(...records);
       allErrors.push(
         ...fileErrors.map((err) => ({ ...err, file: file.name }))
@@ -54,7 +54,7 @@ export default function DailyWeighingUpload() {
       const { error } = await supabase
         .from("daily_weighing")
         .upsert(batch, {
-          onConflict: "employee_code,field_code,terminal,work_date",
+          onConflict: "employee_code,terminal,file_date",
         });
 
       if (error) {
@@ -91,7 +91,7 @@ export default function DailyWeighingUpload() {
         </div>
       )}
 
-      {errors.length > 0 && (
+      {errors.filter((e) => !e.warning).length > 0 && (
         <div
           style={{
             background: "#fff3f3",
@@ -102,11 +102,34 @@ export default function DailyWeighingUpload() {
             color: "#a33",
           }}
         >
-          <strong>{errors.length} line(s) could not be parsed:</strong>
+          <strong>{errors.filter((e) => !e.warning).length} line(s) could not be parsed:</strong>
           <ul style={{ marginTop: "0.5rem", maxHeight: 120, overflowY: "auto" }}>
-            {errors.slice(0, 10).map((err, i) => (
+            {errors.filter((e) => !e.warning).slice(0, 10).map((err, i) => (
               <li key={i}>
                 {err.file} — line {err.line}: {err.reason}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {errors.filter((e) => e.warning).length > 0 && (
+        <div
+          style={{
+            background: "#fffbeb",
+            border: "1px solid #fde68a",
+            borderRadius: 8,
+            padding: "0.75rem 1rem",
+            marginBottom: "1rem",
+            color: "#92400e",
+          }}
+        >
+          <strong>{errors.filter((e) => e.warning).length} file(s) have a date mismatch</strong>{" "}
+          (the date inside the file doesn't match the filename's date — data is still imported, using the filename date):
+          <ul style={{ marginTop: "0.5rem", maxHeight: 120, overflowY: "auto" }}>
+            {errors.filter((e) => e.warning).map((err, i) => (
+              <li key={i}>
+                {err.file}: {err.reason}
               </li>
             ))}
           </ul>
@@ -123,24 +146,30 @@ export default function DailyWeighingUpload() {
               <thead>
                 <tr style={{ background: "#f5f5f5", textAlign: "left" }}>
                   <th style={cellStyle}>Employee</th>
-                  <th style={cellStyle}>Field</th>
+                  <th style={cellStyle}>Division</th>
                   <th style={cellStyle}>Terminal</th>
                   <th style={cellStyle}>Date</th>
-                  <th style={cellStyle}>Field kg</th>
-                  <th style={cellStyle}>Factory kg</th>
-                  <th style={cellStyle}>Diff</th>
+                  <th style={cellStyle}>Session 1</th>
+                  <th style={cellStyle}>Session 2</th>
+                  <th style={cellStyle}>Session 3</th>
+                  <th style={cellStyle}>Session 4</th>
+                  <th style={cellStyle}>Total kg</th>
                 </tr>
               </thead>
               <tbody>
                 {preview.slice(0, 100).map((r, i) => (
                   <tr key={i} style={{ borderBottom: "1px solid #eee" }}>
                     <td style={cellStyle}>{r.employee_code}</td>
-                    <td style={cellStyle}>{r.field_code}</td>
+                    <td style={cellStyle}>{r.division}</td>
                     <td style={cellStyle}>{r.terminal}</td>
-                    <td style={cellStyle}>{r.work_date}</td>
-                    <td style={cellStyle}>{r.field_kg}</td>
-                    <td style={cellStyle}>{r.factory_kg}</td>
-                    <td style={cellStyle}>{r.field_kg - r.factory_kg}</td>
+                    <td style={cellStyle}>{r.file_date}</td>
+                    <td style={cellStyle}>{r.session1_kg}</td>
+                    <td style={cellStyle}>{r.session2_kg}</td>
+                    <td style={cellStyle}>{r.session3_kg}</td>
+                    <td style={cellStyle}>{r.session4_kg}</td>
+                    <td style={cellStyle}>
+                      <strong>{r.session1_kg + r.session2_kg + r.session3_kg + r.session4_kg}</strong>
+                    </td>
                   </tr>
                 ))}
               </tbody>

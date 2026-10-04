@@ -1,25 +1,31 @@
-// src/weighingParser.js
+// src/weighingParser.js  (v2 — fixes the 2-of-4 session weight bug)
 //
 // Parses the fixed-format .TXT export from the leaf weighing terminals.
 //
-// Example line:
-// G,02,250826,1088,P,      ,7     , . , ,025,0000,00,7     , . , ,029,0000,00,,.,,000,0000,00,,.,,000,0017,00,S,S,,
+// Example line (real file, confirmed against 94 files + client's Excel
+// template this session):
+// 1,1 ,010826,4650,P,      ,5     , . , ,065,0000,00,5     , . , ,061,0000,00,      , . , ,000,0000,00,      , . , ,000,0017,00,S,S, ,
 //
 // Field positions (0-indexed after splitting on ','):
-//   0  record type (G/A)
-//   1  division code
-//   2  date as DDMMYY (e.g. 250826 = 25-Aug-2026)
-//   3  employee code
-//   6  field code — 1st weighing (e.g. '7', '9', 'LA1B')
-//   9  weight (kg) — 1st weighing   ← assumed "Field" weight
-//   12 field code — 2nd weighing (usually same as position 6)
-//   15 weight (kg) — 2nd weighing  ← assumed "Factory" weight
-//   28 scale/terminal id (constant per file, e.g. '0017')
-//   30 status flag — 1st weighing ('S' = accepted)
-//   31 status flag — 2nd weighing ('S' = accepted, blank = not recorded)
+//   0  Team
+//   1  Division
+//   2  Date as DDMMYY (e.g. 010826 = 01-Aug-2026)
+//   3  Employee code
+//   4  Status ('P' = present, blank = absent)
+//   5  Job code (blank = plucking)
+//   9  Session 1 weight (kg)
+//  15  Session 2 weight (kg)
+//  21  Session 3 weight (kg)
+//  27  Session 4 weight (kg)
+//  28  Scale/terminal id (constant per file)
+//  30  Status flag — 1st weighing ('S' = accepted)
+//  31  Status flag — 2nd weighing
 //
-// NOTE: the Field-vs-Factory interpretation of the two weight columns is an
-// assumption pending confirmation from field staff — see chat notes.
+// IMPORTANT: the previous version of this file only read indices 9 and 15
+// (calling them "Field kg" / "Factory kg") and silently dropped sessions 3
+// and 4 (indices 21/27) entirely — undercounting roughly half of each
+// employee's daily plucking weight for anyone with more than 2 weighing
+// sessions. This version reads all 4.
 
 /**
  * Strip null bytes and other non-printable control characters that some
@@ -32,16 +38,30 @@ function sanitize(str) {
 }
 
 /**
- * Extract the terminal code (I1, I2, I3, ...) from a filename like
- * "2026.08.25.I3 (1).TXT"
+ * Extract the terminal code (A1, A2, A3, A4, ...) from a filename like
+ * "20260825.A3.TXT". Falls back to the older "I<n>" convention if present.
  */
 export function extractTerminalFromFilename(filename) {
-  const match = filename.match(/I(\d+)/i);
+  let match = filename.match(/\.A(\d+)\./i);
+  if (match) return `A${match[1]}`;
+  match = filename.match(/I(\d+)/i);
   return match ? `I${match[1]}` : "UNKNOWN";
 }
 
 /**
- * Parse a DDMMYY date string (e.g. "250826") into an ISO date "2026-08-25".
+ * Extract the file date (YYYY-MM-DD) from a filename like "20260825.A3.TXT".
+ * This is treated as the authoritative date — see internal-date-mismatch
+ * handling below — matching the convention confirmed this session.
+ */
+export function extractFileDateFromFilename(filename) {
+  const match = filename.match(/(\d{4})(\d{2})(\d{2})\.A\d+\./i);
+  if (!match) return null;
+  const [, yyyy, mm, dd] = match;
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+/**
+ * Parse a DDMMYY date string (e.g. "010826") into an ISO date "2026-08-01".
  * Assumes 21st century (20YY).
  */
 function parseDdmmyy(raw) {
@@ -52,15 +72,20 @@ function parseDdmmyy(raw) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+function toDdmmyy(isoDate) {
+  // "2026-08-01" -> "010826"
+  const [yyyy, mm, dd] = isoDate.split("-");
+  return `${dd}${mm}${yyyy.slice(2)}`;
+}
+
 /**
  * Parse the full text content of one weighing terminal file.
  * @param {string} text - raw file content
- * @param {string} terminal - terminal code, e.g. 'I1' (usually from filename)
+ * @param {string} terminal - terminal code, e.g. 'A1' (from filename)
+ * @param {string} filename - original filename (used for the authoritative file date)
  * @returns {Array<object>} parsed records ready to upsert into `daily_weighing`
  */
-export function parseWeighingFile(text, terminal) {
-  // Strip null bytes from the whole file up front (covers stray bytes
-  // that don't land inside a clean field, e.g. trailing padding at EOF).
+export function parseWeighingFile(text, terminal, filename) {
   const cleanText = sanitize(text.replace(/\u0000/g, ""));
 
   const lines = cleanText
@@ -68,27 +93,31 @@ export function parseWeighingFile(text, terminal) {
     .map((l) => sanitize(l))
     .filter((l) => l.length > 0);
 
+  const fileDate = extractFileDateFromFilename(filename || "");
+  const expectedInternal = fileDate ? toDdmmyy(fileDate) : null;
+
   const records = [];
   const errors = [];
 
   lines.forEach((line, idx) => {
     const parts = line.split(",");
 
-    if (parts.length < 31) {
+    if (parts.length < 29) {
       errors.push({ line: idx + 1, reason: "Unexpected column count", raw: line });
       return;
     }
 
     try {
+      const division = sanitize(parts[1]);
+      const internalDate = sanitize(parts[2]);
       const employeeCode = sanitize(parts[3]);
-      const workDate = parseDdmmyy(sanitize(parts[2]));
-      const fieldCode1 = sanitize(parts[6]);
-      const fieldKg = parseInt(parts[9], 10) || 0;
-      const fieldCode2 = sanitize(parts[12]);
-      const factoryKg = parseInt(parts[15], 10) || 0;
-      const scaleId = parts[28] ? sanitize(parts[28]) : null;
-      const status1 = parts[30] ? sanitize(parts[30]) : "";
-      const status2 = parts[31] ? sanitize(parts[31]) : "";
+      const status = sanitize(parts[4]);
+      const jobCode = sanitize(parts[5]);
+
+      const session1Kg = parseInt(parts[9], 10) || 0;
+      const session2Kg = parseInt(parts[15], 10) || 0;
+      const session3Kg = parseInt(parts[21], 10) || 0;
+      const session4Kg = parseInt(parts[27], 10) || 0;
 
       if (!employeeCode) {
         errors.push({ line: idx + 1, reason: "Missing employee code", raw: line });
@@ -97,19 +126,31 @@ export function parseWeighingFile(text, terminal) {
 
       records.push({
         employee_code: employeeCode,
-        field_code: fieldCode1 || fieldCode2 || "UNKNOWN",
+        division,
+        job_code: jobCode || null,
+        status,
         terminal: sanitize(terminal),
-        work_date: workDate,
-        field_kg: fieldKg,
-        factory_kg: factoryKg,
-        scale_id: scaleId,
-        status_flags: [status1, status2].filter(Boolean).join(","),
+        file_date: fileDate,
+        internal_date: internalDate,
+        session1_kg: session1Kg,
+        session2_kg: session2Kg,
+        session3_kg: session3Kg,
+        session4_kg: session4Kg,
         raw_line: sanitize(line),
       });
+
+      if (idx === 0 && expectedInternal && internalDate !== expectedInternal) {
+        errors.push({
+          line: idx + 1,
+          reason: `Date mismatch: filename says ${expectedInternal}, row says ${internalDate} (flagged, not fatal)`,
+          raw: line,
+          warning: true,
+        });
+      }
     } catch (err) {
       errors.push({ line: idx + 1, reason: err.message, raw: line });
     }
   });
 
-  return { records, errors };
+  return { records, errors, fileDate };
 }
